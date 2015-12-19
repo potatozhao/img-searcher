@@ -3,9 +3,27 @@ import requests,json,os,urllib,re,xml.dom.minidom,os,json,time
 from io import open as iopen
 from urlparse import urlsplit
 import time,random, bs4
+import pdb
+
+import logging
+
+logger = logging.getLogger('mylogger')
+
+logger.setLevel(logging.DEBUG)
+
+ch = logging.StreamHandler()
+
+ch.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+ch.setFormatter(formatter)
+
+logger.addHandler(ch)
 
 def Download(objURL,path,name):
-    time.sleep(1)
+    #time.sleep(1)
+    logger.info("Start Downlaod img :%s"%(objURL))
     file_name =  urlsplit(objURL)[2].split('/')[-1]
     file_suffix = file_name.split('.')[-1].lower()
 
@@ -18,21 +36,25 @@ def Download(objURL,path,name):
 
     try:
 	#print objURL
-	objURL1 = objURL.split('imgurl:"')
-	print objURL1[1]
-        i = requests.get(objURL1[1],timeout=3000,headers=Header2)
+        if 'imgurl:"' in objURL:
+	        objURL_final = objURL.split('imgurl:"')[1]
+        else:
+            objURL_final = objURL
+	    print objURL_final
+        i = requests.get(objURL_final,timeout=3,headers=Header2)
         if i.status_code == requests.codes.ok:
             with iopen(os.path.join(path,name+'.%s'%file_suffix), 'wb') as file:
                 file.write(i.content)
-                print name,'save %s' % objURL1[1]
+                logger.info(name + 'save %s' % objURL_final)
                 return 1
         else:
-            print name,'could not save %s' % objURL1[1],i.status_code
+            logger.info( name+'could not save %s' % objURL_final+i.status_code)
             return 0
     except Exception,e:
-        print 'Downlaod',e.message,objURL1[1]
+        logger.warning('Downlaod'+e.message+objURL_final)
         return 0
-    
+
+
 
 
 def BaiduDecode(objURL):
@@ -71,52 +93,56 @@ def Baidu(word):
     BASE_PATH = os.path.join('Download', word2.decode('utf8'))
     if not os.path.exists(BASE_PATH):
         os.makedirs(BASE_PATH)
-        
+
     Header={"HOST":"image.baidu.com",
                 "User-Agent":"Mozilla/5.0 (Windows NT 6.1; WOW64; rv:29.0) Gecko/20100101 Firefox/29.0",
                 "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language":"zh-cn,zh;q=0.8,en-us;q=0.5,en;q=0.3",
                 "Referer":"http://image.baidu.com/",
-                }
+            }
+
     try:
-        url=url='http://image.baidu.com/i?tn=baiduimagejson&width=&ie=utf-8&height=&word={0}&rn={1}&pn={2}'.format(urllib.quote(word),5,0)
+        #url=url='http://image.baidu.com/i?tn=baiduimagejson&width=&ie=utf-8&height=&word={0}&rn={1}&pn={2}'.format(urllib.quote(word),5,0)
+        url = 'http://image.baidu.com/search/avatarjson?tn=resultjsonavatarnew&ie=utf-8&&cg=star&itg=0&z=0&width=&height=&lm=-1&ic=0&s=0&st=-1&gsm=b4&word={0}&rn={1}&pn={2}'.format(urllib.quote(word),5,0)
         req = requests.get(url,headers=Header)
         result=json.loads(req.text)
+        logger.info("Downlaod json url first"+ url)
     except Exception,e:
-        print  e.message
+        logger.warning("Downlaod json first error:"+e.message)
         return
-
-    listNum=result['listNum']
-    print 'I find %d results'%listNum
+    listNum=int(result['listNum'])
+    logger.info( 'I find %d results'%listNum)
     time.sleep(5)
     count=0
     URLList=[]
     pageNum=-1
     for i in range(0,1000):
         try:
-            url=url='http://image.baidu.com/i?tn=baiduimagejson&width=&ie=utf-8&height=&word={0}&rn={1}&pn={2}'.format(urllib.quote(word),returnNum,pageNum+1)
+            url='http://image.baidu.com/search/avatarjson?tn=resultjsonavatarnew&ie=utf-8&cg=star&itg=0&z=0&width=&height=&lm=-1&ic=0&s=0&st=-1&gsm=b4&word={0}&rn={1}&pn={2}'.format(urllib.quote(word),returnNum,pageNum+1)
+            #url='http://image.baidu.com/i?tn=baiduimagejson&width=&ie=utf-8&height=&word={0}&rn={1}&pn={2}'.format(urllib.quote(word),returnNum,pageNum+1)
             req=requests.get(url,headers=Header)
             result=json.loads(req.text)
+            logger.info("Downlaod json %d :"%i + url)
         except requests.HTTPError,e:
-            print e.message
+            logger.warning("Downlaod json %d error"%i + e.message)
             break
-        for num,item in enumerate(result['data']):
+        for num,item in enumerate(result['imgs']):
             try:
                 pageNum=item['pageNum']
                 objURL=item['objURL']
                 URLList.append(objURL)
                 count=count+Download(objURL=BaiduDecode(objURL),path=BASE_PATH,name="baidu_%06d"%pageNum)
             except Exception,e:
-                print e.message
+                logger.warning("get image url error :" + e.message)
                 break
         #time.sleep(60)
         if pageNum+1>listNum:
             break
-    print 'I download {0} pictures in folder {1}'.format(count,word2)
-    
-    
+    logger.info('I download {0} pictures in folder {1}'.format(count,word2))
+
+
 ##########################################
-    
+
 def GoogleDecode(objURL):
     url=re.findall(r'(?<=imgurl\=).*?(?=&)',objURL)
 
@@ -174,8 +200,8 @@ def Google(word):
             print e.message
             break
     print 'I download {0} pictures in folder {1}'.format(count,word2)
-    
-    
+
+
 ###########################################################
 
 def BingDecode(objURL):
@@ -227,8 +253,8 @@ def Flickr(word,i=0,key='bf0d807bea897bf98e217a473c8c3489'):
     #print sys.getdefaultencoding()
     sys.setdefaultencoding('utf-8')
     #print sys.getdefaultencoding()
-    
-    
+
+
     word2=word
     BASE_PATH = os.path.join('Download', word2.decode('utf8'))
     if not os.path.exists(BASE_PATH):
@@ -238,7 +264,7 @@ def Flickr(word,i=0,key='bf0d807bea897bf98e217a473c8c3489'):
                 "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language":"zh-cn,zh;q=0.8,en-us;q=0.5,en;q=0.3",
                 "Referer":"http://www.flickr.com/",
-                 
+
                  }
     for page_num in range(1,10):
         url='https://api.flickr.com/services/rest/?method=flickr.photos.search&api_key={0}&text={1}&&sort=relevance&per_page=500&page={2}'.format(key,urllib.quote(word2),page_num)
